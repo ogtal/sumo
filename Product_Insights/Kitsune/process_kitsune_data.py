@@ -1,6 +1,8 @@
 import datetime
 import time
 
+import logging
+
 import pandas as pd
 
 from google.cloud import bigquery
@@ -14,6 +16,9 @@ from Product_Insights.Kitsune.create_kitsune_tables \
 
 bq_client = bigquery.Client()
 storage_client = storage.Client()
+
+
+logging.basicConfig(filename='kitsune_backfill.log', filemode='w',format='%(asctime)s - %(message)s', datefmt='%d-%b-%y %H:%M:%S')
 
 def get_timeperiod(OUTPUT_DATASET, OUTPUT_TABLE):
   ''' Return the current time and last time data was previously saved with this scipt '''
@@ -57,14 +62,15 @@ def language_analysis(df):
   d_lang = {}
   d_confidence = {}
   for i, row in df.iterrows():
+    logging.info('language detection:', i, df.shape)
     while True:
       try:
         confidence, language = gc_detect_language(row.title + row.question_content)
         d_lang[row.question_id] = language
         d_confidence[row.question_id] = confidence
       except Forbidden as e:
-        print(e)
-        print('Waiting 100 seconds due to rate-limit constraint')
+        logging.info(e)
+        logging.info('Waiting 100 seconds due to rate-limit constraint')
         time.sleep(100)
         continue
       break
@@ -86,6 +92,7 @@ def run_sentiment_analysis(df):
   sentiment_score = {}
   sentiment_magnitude = {}
   for i, row in df.iterrows():
+    logging.info('sentiment analysis:', i, df.shape)    
     while True:
       try:
         text = row.title + row.question_content
@@ -93,8 +100,8 @@ def run_sentiment_analysis(df):
         sentiment_score[row.question_id] = score
         sentiment_magnitude[row.question_id] = magnitude
       except Forbidden as e:
-        print(e)
-        print('Waiting 100 seconds due to rate-limit constraint')
+        logging.info(e)
+        logging.info('Waiting 100 seconds due to rate-limit constraint')
         time.sleep(100)
         continue
       break
@@ -155,7 +162,7 @@ def save_results(OUTPUT_DATASET, OUTPUT_TABLE, OUTPUT_BUCKET, df, start_dt, end_
 
 def get_unprocessed_data(OUTPUT_DATASET, OUTPUT_TABLE, INPUT_DATASET, INPUT_TABLE):
   start_dt, end_dt = get_timeperiod(OUTPUT_DATASET, OUTPUT_TABLE)
-  df = load_data(INPUT_DATASET, INPUT_TABLE, start_dt, end_dt)
+  df = load_data(INPUT_DATASET, INPUT_TABLE, start_dt, end_dt, limit=500)
   return(df, start_dt, end_dt)
 
 def get_sentiment(df):
